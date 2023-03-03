@@ -1,0 +1,19 @@
+[package]
+name = "native-multisig-wallet"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+borsh = "0.9"
+solana-program = "1.15.2"
+thiserror = "1.0.38"
+
+[features]
+no-entrypoint = []
+
+
+[lib]
+name = "multisig_wallet"
+crate-type = ["cdylib", "lib"]
