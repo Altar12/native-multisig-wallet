@@ -10,9 +10,12 @@ pub fn process_instruction(
 ) -> ProgramResult {
     let instruction = WalletInstruction::unpack(data)?;
     match instruction {
-        WalletInstruction::CreateWallet { m, n, owners } => {
-            handler::create_wallet(program_id, accounts, m, n, &owners)
-        }
+        WalletInstruction::CreateWallet {
+            m,
+            n,
+            owners,
+            proposal_lifetime,
+        } => handler::create_wallet(program_id, accounts, m, n, &owners, proposal_lifetime),
         WalletInstruction::CreateTokenAccount => {
             handler::create_token_account(program_id, accounts)
         }

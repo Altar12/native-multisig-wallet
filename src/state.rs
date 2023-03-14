@@ -30,39 +30,39 @@ pub enum ProposalType {
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct WalletConfig {
-    discriminator: AccountType,
-    m: u8,
-    n: u8,
-    owners: u8,
-    owner_identities: [u8; 32],
-    proposal_lifetime: i64,
-    is_initialized: bool,
+    pub discriminator: AccountType,
+    pub m: u8,
+    pub n: u8,
+    pub owners: u8,
+    pub owner_identities: [u8; 32],
+    pub proposal_lifetime: i64,
+    pub is_initialized: bool,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct WalletAuth {
-    discriminator: AccountType,
-    owner: Pubkey,
-    wallet: Pubkey,
-    added_time: i64,
-    id: u8,
+    pub discriminator: AccountType,
+    pub owner: Pubkey,
+    pub wallet: Pubkey,
+    pub added_time: i64,
+    pub id: u8,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct Proposal {
-    discriminator: AccountType,
-    wallet: Pubkey,
-    proposer: Pubkey,
-    proposal: ProposalType,
-    is_initialized: bool,
+    pub discriminator: AccountType,
+    pub wallet: Pubkey,
+    pub proposer: Pubkey,
+    pub proposal: ProposalType,
+    pub is_initialized: bool,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
 pub struct VoteCount {
-    discriminator: AccountType,
-    proposed_time: i64,
-    votes: u8,
-    vote_record: [u8; 32],
+    pub discriminator: AccountType,
+    pub proposed_time: i64,
+    pub votes: u8,
+    pub vote_record: [u8; 32],
 }
 
 impl IsInitialized for WalletConfig {

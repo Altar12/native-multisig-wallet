@@ -11,7 +11,12 @@ pub enum WalletInstruction {
     SystemProgram
     WalletAuths: mutable - optional multiple accounts
      */
-    CreateWallet { m: u8, n: u8, owners: Vec<Pubkey> },
+    CreateWallet {
+        m: u8,
+        n: u8,
+        owners: Vec<Pubkey>,
+        proposal_lifetime: i64,
+    },
     /*
     Payer: signer, mutable
     WalletConfig
@@ -41,7 +46,9 @@ pub enum WalletInstruction {
     VoteCount: mutable ["votes", wallet_config.key, proposal.key]
     SystemProgram
      */
-    CreateProposal { proposal: ProposalType },
+    CreateProposal {
+        proposal: ProposalType,
+    },
     /*
     User: signer
     WalletConfig
@@ -82,11 +89,14 @@ impl WalletInstruction {
                 let (&n, rest) = rest
                     .split_first()
                     .ok_or(ProgramError::InvalidInstructionData)?;
+                let proposal_lifetime = i64::deserialize(&mut &rest[..8])?;
+                let rest = &rest[8..];
                 if rest.len() == 0 {
                     Self::CreateWallet {
                         m,
                         n,
                         owners: Vec::new(),
+                        proposal_lifetime,
                     }
                 } else {
                     let mut owners = Vec::new();
@@ -97,7 +107,12 @@ impl WalletInstruction {
                         owners.push(Pubkey::deserialize(&mut &rest[count..count + 32]).unwrap());
                         count += 32;
                     }
-                    Self::CreateWallet { m, n, owners }
+                    Self::CreateWallet {
+                        m,
+                        n,
+                        owners,
+                        proposal_lifetime,
+                    }
                 }
             }
             1 => Self::CreateTokenAccount,
