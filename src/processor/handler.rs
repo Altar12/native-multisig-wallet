@@ -18,7 +18,11 @@ use spl_associated_token_account::{
     get_associated_token_address, instruction::create_associated_token_account,
     ID as ASSOCIATED_TOKEN_PROGRAM_ID,
 };
-use spl_token::{state::Mint, ID as TOKEN_PROGRAM_ID};
+use spl_token::{
+    instruction as token_instruction,
+    state::{Account, Mint},
+    ID as TOKEN_PROGRAM_ID,
+};
 use std::convert::TryInto;
 
 const OWNER: &'static str = "owner";
@@ -88,6 +92,7 @@ pub fn create_wallet(
         wallet: *wallet_config.key,
         added_time: current_time,
         id: 0,
+        is_initialized: true,
     };
     user_wallet_auth.serialize(&mut &mut wallet_auth.data.borrow_mut()[..])?;
     // create and initialize wallet auth accounts for other owners
@@ -232,6 +237,105 @@ pub fn create_token_account(program_id: &Pubkey, accounts: &[AccountInfo]) -> Pr
 }
 
 pub fn give_up_ownership(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let user = next_account_info(accounts_iter)?;
+    let wallet_config = next_account_info(accounts_iter)?;
+    let wallet_auth = next_account_info(accounts_iter)?;
+
+    if !user.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if wallet_config.owner != program_id {
+        return Err(ProgramError::IllegalOwner);
+    }
+    let mut wallet = try_from_slice_unchecked::<WalletConfig>(&wallet_config.data.borrow())?;
+    if !wallet.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    let (wallet_auth_key, _) = Pubkey::find_program_address(
+        &[
+            OWNER.as_bytes().as_ref(),
+            wallet_config.key.as_ref(),
+            user.key.as_ref(),
+        ],
+        program_id,
+    );
+    if *wallet_auth.key != wallet_auth_key {
+        return Err(WalletError::InvalidWalletAuth.into());
+    }
+
+    let mut user_wallet_id = try_from_slice_unchecked::<WalletAuth>(&wallet_auth.data.borrow())?;
+    if !user_wallet_id.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    user_wallet_id.is_initialized = false;
+    user_wallet_id.serialize(&mut &mut wallet_auth.data.borrow_mut()[..])?;
+    let mut balance = wallet_auth.lamports();
+    **wallet_auth.try_borrow_mut_lamports()? -= balance;
+    **user.try_borrow_mut_lamports()? += balance;
+
+    if wallet.owners == 1 {
+        wallet.is_initialized = false;
+        wallet.serialize(&mut &mut wallet_config.data.borrow_mut()[..])?;
+        balance = wallet_config.lamports();
+        **wallet_config.try_borrow_mut_lamports()? -= balance;
+        **user.try_borrow_mut_lamports()? += balance;
+        if accounts.iter().len() == 0 {
+            return Ok(());
+        }
+
+        let wallet_authority = next_account_info(accounts_iter)?;
+        let token_program = next_account_info(accounts_iter)?;
+
+        let (wallet_authority_key, bump) = Pubkey::find_program_address(
+            &[AUTHORITY.as_bytes().as_ref(), wallet_config.key.as_ref()],
+            program_id,
+        );
+        if *wallet_authority.key != wallet_authority_key {
+            return Err(WalletError::InvalidWalletAuthority.into());
+        }
+        if *token_program.key != TOKEN_PROGRAM_ID {
+            return Err(ProgramError::IncorrectProgramId);
+        }
+        let mut send_account;
+        let mut receive_account;
+        let mut amount;
+        while accounts_iter.len() > 0 {
+            send_account = next_account_info(accounts_iter)?;
+            receive_account = next_account_info(accounts_iter)?;
+            amount = Account::unpack(&send_account.data.borrow())?.amount;
+            invoke_signed(
+                &token_instruction::transfer(
+                    token_program.key,
+                    send_account.key,
+                    receive_account.key,
+                    wallet_authority.key,
+                    &[],
+                    amount,
+                )?,
+                &[
+                    send_account.clone(),
+                    receive_account.clone(),
+                    wallet_authority.clone(),
+                ],
+                &[&[
+                    AUTHORITY.as_bytes().as_ref(),
+                    wallet_config.key.as_ref(),
+                    &[bump],
+                ]],
+            )?;
+        }
+    } else {
+        let owner_id: usize = user_wallet_id.id.try_into().unwrap();
+        let owner_byte_pos = owner_id / 8;
+        let owner_bit_pos = owner_id % 8;
+        let mut owner_byte = format!("{:08b}", wallet.owner_identities[owner_byte_pos]);
+        owner_byte.replace_range(owner_bit_pos..owner_bit_pos + 1, "0");
+        wallet.owner_identities[owner_byte_pos] = u8::from_str_radix(&owner_byte, 2).unwrap();
+        wallet.owners -= 1;
+        wallet.serialize(&mut &mut wallet_config.data.borrow_mut()[..])?;
+    }
+
     Ok(())
 }
 

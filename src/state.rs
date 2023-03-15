@@ -46,6 +46,7 @@ pub struct WalletAuth {
     pub wallet: Pubkey,
     pub added_time: i64,
     pub id: u8,
+    pub is_initialized: bool,
 }
 
 #[derive(BorshSerialize, BorshDeserialize)]
@@ -63,9 +64,15 @@ pub struct VoteCount {
     pub proposed_time: i64,
     pub votes: u8,
     pub vote_record: [u8; 32],
+    pub is_initialized: bool,
 }
 
 impl IsInitialized for WalletConfig {
+    fn is_initialized(&self) -> bool {
+        self.is_initialized
+    }
+}
+impl IsInitialized for WalletAuth {
     fn is_initialized(&self) -> bool {
         self.is_initialized
     }
@@ -75,6 +82,12 @@ impl IsInitialized for Proposal {
         self.is_initialized
     }
 }
+impl IsInitialized for VoteCount {
+    fn is_initialized(&self) -> bool {
+        self.is_initialized
+    }
+}
+
 impl Sealed for WalletConfig {}
 impl Pack for WalletConfig {
     const LEN: usize = std::mem::size_of::<Self>();
