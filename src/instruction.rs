@@ -20,7 +20,7 @@ pub enum WalletInstruction {
     /*
     Payer: signer, mutable
     WalletConfig
-    WalletAuthority
+    WalletAuthority ["authority", wallet_config.key]
     Mint
     AssociatedTokenAccount: mutable
     SystemProgram
@@ -33,7 +33,7 @@ pub enum WalletInstruction {
     WalletConfig: mutable
     WalletAuth: mutable ["owner", wallet_config.key, user.key]
     ...all below accounts can be either present or not...
-    WalletAuthority
+    WalletAuthority ["authority", wallet_config.key]
     TokenProgram
     pairs of send and receive accounts
      */
@@ -66,7 +66,7 @@ pub enum WalletInstruction {
     ...for Transfer
     SendAccount: mutable
     ReceiveAccount: mutable
-    WalletAuthority
+    WalletAuthority ["authority", wallet_config.key]
     TokenProgram
     ...for AddOwner
     WalletAuth: mutable ["owner", wallet_config.key, user.key] user present in proposal

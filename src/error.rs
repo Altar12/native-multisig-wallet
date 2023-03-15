@@ -9,6 +9,12 @@ pub enum WalletError {
     InvalidWalletAuth,
     #[error("Number of owner keys passed does not equal to number of Wallet Auth accounts passed")]
     OwnerWalletAuthCountMismatch,
+    #[error("Invalid Wallet Authority account passed")]
+    InvalidWalletAuthority,
+    #[error("The account passed for Mint does not corresponds to a valid mint")]
+    InvalidMint,
+    #[error("The account passed for Associated Token Account is incorrect")]
+    IncorrectAssociatedTokenAccount,
 }
 
 impl From<WalletError> for ProgramError {

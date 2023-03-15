@@ -14,7 +14,15 @@ use solana_program::{
     system_program::ID as SYSTEM_PROGRAM_ID,
     sysvar::{rent::Rent, Sysvar},
 };
+use spl_associated_token_account::{
+    get_associated_token_address, instruction::create_associated_token_account,
+    ID as ASSOCIATED_TOKEN_PROGRAM_ID,
+};
+use spl_token::{state::Mint, ID as TOKEN_PROGRAM_ID};
 use std::convert::TryInto;
+
+const OWNER: &'static str = "owner";
+const AUTHORITY: &'static str = "authority";
 
 pub fn create_wallet(
     program_id: &Pubkey,
@@ -38,7 +46,7 @@ pub fn create_wallet(
     }
     let (mut wallet_auth_key, mut bump) = Pubkey::find_program_address(
         &[
-            "owner".as_bytes().as_ref(),
+            OWNER.as_bytes().as_ref(),
             wallet_config.key.as_ref(),
             user.key.as_ref(),
         ],
@@ -66,7 +74,7 @@ pub fn create_wallet(
         ),
         &[user.clone(), wallet_auth.clone()],
         &[&[
-            "owner".as_bytes().as_ref(),
+            OWNER.as_bytes().as_ref(),
             wallet_config.key.as_ref(),
             user.key.as_ref(),
             &[bump],
@@ -88,7 +96,7 @@ pub fn create_wallet(
         wallet_auth = next_account_info(accounts_iter)?;
         (wallet_auth_key, bump) = Pubkey::find_program_address(
             &[
-                "owner".as_bytes().as_ref(),
+                OWNER.as_bytes().as_ref(),
                 wallet_config.key.as_ref(),
                 owner.as_ref(),
             ],
@@ -107,7 +115,7 @@ pub fn create_wallet(
             ),
             &[user.clone(), wallet_auth.clone()],
             &[&[
-                "owner".as_bytes().as_ref(),
+                OWNER.as_bytes().as_ref(),
                 wallet_config.key.as_ref(),
                 owner.as_ref(),
                 &[bump],
@@ -161,6 +169,65 @@ pub fn create_wallet(
 }
 
 pub fn create_token_account(program_id: &Pubkey, accounts: &[AccountInfo]) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let payer = next_account_info(accounts_iter)?;
+    let wallet_config = next_account_info(accounts_iter)?;
+    let wallet_authority = next_account_info(accounts_iter)?;
+    let mint = next_account_info(accounts_iter)?;
+    let token_account = next_account_info(accounts_iter)?;
+    let system_program = next_account_info(accounts_iter)?;
+    let token_program = next_account_info(accounts_iter)?;
+    let associated_token_program = next_account_info(accounts_iter)?;
+
+    if !payer.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if wallet_config.owner != program_id {
+        return Err(ProgramError::IllegalOwner);
+    }
+    let wallet = try_from_slice_unchecked::<WalletConfig>(&wallet_config.data.borrow())?;
+    if !wallet.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    let (wallet_authority_key, _) = Pubkey::find_program_address(
+        &[AUTHORITY.as_bytes().as_ref(), wallet_config.key.as_ref()],
+        program_id,
+    );
+    if *wallet_authority.key != wallet_authority_key {
+        return Err(WalletError::InvalidWalletAuthority.into());
+    }
+    if *mint.owner != TOKEN_PROGRAM_ID {
+        return Err(WalletError::InvalidMint.into());
+    }
+    if let Err(_) = Mint::unpack(&mint.data.borrow()) {
+        return Err(WalletError::InvalidMint.into());
+    }
+    let ata_key = get_associated_token_address(wallet_authority.key, mint.key);
+    if *token_account.key != ata_key {
+        return Err(WalletError::IncorrectAssociatedTokenAccount.into());
+    }
+    if *system_program.key != SYSTEM_PROGRAM_ID
+        || *token_program.key != TOKEN_PROGRAM_ID
+        || *associated_token_program.key != ASSOCIATED_TOKEN_PROGRAM_ID
+    {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+    invoke(
+        &create_associated_token_account(
+            payer.key,
+            wallet_authority.key,
+            mint.key,
+            token_program.key,
+        ),
+        &[
+            payer.clone(),
+            token_account.clone(),
+            wallet_authority.clone(),
+            mint.clone(),
+            system_program.clone(),
+            token_program.clone(),
+        ],
+    )?;
     Ok(())
 }
 
