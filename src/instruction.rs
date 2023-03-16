@@ -69,6 +69,7 @@ pub enum WalletInstruction {
     WalletAuthority ["authority", wallet_config.key]
     TokenProgram
     ...for AddOwner
+    Payer: signer, mutable
     WalletAuth: mutable ["owner", wallet_config.key, user.key] user present in proposal
     SystemProgram
     ...for ChangeLifetime no other accounts required
