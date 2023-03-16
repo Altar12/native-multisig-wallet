@@ -15,6 +15,8 @@ pub enum WalletError {
     InvalidMint,
     #[error("The account passed for Associated Token Account is incorrect")]
     IncorrectAssociatedTokenAccount,
+    #[error("Invalid Vote Count account passed")]
+    InvalidVoteCount,
 }
 
 impl From<WalletError> for ProgramError {

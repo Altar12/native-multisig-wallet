@@ -1,6 +1,6 @@
 use crate::error::WalletError;
-use crate::state::{AccountType, ProposalType, WalletAuth, WalletConfig};
-use borsh::{BorshDeserialize, BorshSerialize};
+use crate::state::{AccountType, Proposal, ProposalType, VoteCount, WalletAuth, WalletConfig};
+use borsh::BorshSerialize;
 use solana_program::{
     account_info::{next_account_info, AccountInfo},
     borsh::try_from_slice_unchecked,
@@ -27,6 +27,7 @@ use std::convert::TryInto;
 
 const OWNER: &'static str = "owner";
 const AUTHORITY: &'static str = "authority";
+const VOTES: &'static str = "votes";
 
 pub fn create_wallet(
     program_id: &Pubkey,
@@ -342,8 +343,121 @@ pub fn give_up_ownership(program_id: &Pubkey, accounts: &[AccountInfo]) -> Progr
 pub fn create_proposal(
     program_id: &Pubkey,
     accounts: &[AccountInfo],
-    proposal: ProposalType,
+    new_proposal: ProposalType,
 ) -> ProgramResult {
+    let accounts_iter = &mut accounts.iter();
+    let user = next_account_info(accounts_iter)?;
+    let wallet_config = next_account_info(accounts_iter)?;
+    let wallet_auth = next_account_info(accounts_iter)?;
+    let proposal = next_account_info(accounts_iter)?;
+    let vote_count = next_account_info(accounts_iter)?;
+    let system_program = next_account_info(accounts_iter)?;
+
+    if !user.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    if wallet_config.owner != program_id {
+        return Err(ProgramError::IllegalOwner);
+    }
+    if wallet_auth.owner != program_id {
+        return Err(ProgramError::IllegalOwner);
+    }
+    let (wallet_auth_key, _) = Pubkey::find_program_address(
+        &[
+            OWNER.as_bytes().as_ref(),
+            wallet_config.key.as_ref(),
+            user.key.as_ref(),
+        ],
+        program_id,
+    );
+    if *wallet_auth.key != wallet_auth_key {
+        return Err(WalletError::InvalidWalletAuth.into());
+    }
+    if !proposal.is_signer {
+        return Err(ProgramError::MissingRequiredSignature);
+    }
+    let (vote_count_key, bump) = Pubkey::find_program_address(
+        &[
+            VOTES.as_bytes().as_ref(),
+            wallet_config.key.as_ref(),
+            proposal.key.as_ref(),
+        ],
+        program_id,
+    );
+    if *vote_count.key != vote_count_key {
+        return Err(WalletError::InvalidVoteCount.into());
+    }
+    if *system_program.key != SYSTEM_PROGRAM_ID {
+        return Err(ProgramError::IncorrectProgramId);
+    }
+
+    // create proposal account
+    let mut account_size: u64 = Proposal::LEN.try_into().unwrap();
+    let mut rent_amount = Rent::get()?.minimum_balance(Proposal::LEN);
+    invoke(
+        &system_instruction::create_account(
+            user.key,
+            proposal.key,
+            rent_amount,
+            account_size,
+            program_id,
+        ),
+        &[user.clone(), proposal.clone()],
+    )?;
+    // initialize proposal account
+    let proposal_details = Proposal {
+        discriminator: AccountType::Proposal,
+        wallet: *wallet_config.key,
+        proposer: *user.key,
+        proposal: new_proposal,
+        is_initialized: true,
+    };
+    proposal_details.serialize(&mut &mut proposal.data.borrow_mut()[..])?;
+    // create vote count account
+    account_size = VoteCount::LEN.try_into().unwrap();
+    rent_amount = Rent::get()?.minimum_balance(VoteCount::LEN);
+    invoke_signed(
+        &system_instruction::create_account(
+            user.key,
+            vote_count.key,
+            rent_amount,
+            account_size,
+            program_id,
+        ),
+        &[user.clone(), vote_count.clone()],
+        &[&[
+            VOTES.as_bytes().as_ref(),
+            wallet_config.key.as_ref(),
+            proposal.key.as_ref(),
+            &[bump],
+        ]],
+    )?;
+    // initialize vote count account
+    let user_wallet_id = try_from_slice_unchecked::<WalletAuth>(&wallet_auth.data.borrow())?;
+    if !user_wallet_id.is_initialized() {
+        return Err(ProgramError::UninitializedAccount);
+    }
+    let owner_id: usize = user_wallet_id.id.try_into().unwrap();
+    let owner_byte_pos = owner_id / 8;
+    let owner_bit_pos = owner_id % 8;
+    let mut owner_byte_str = String::new();
+    for _ in 0..owner_bit_pos {
+        owner_byte_str.push('0');
+    }
+    owner_byte_str.push('1');
+    for _ in owner_bit_pos + 1..8 {
+        owner_byte_str.push('0');
+    }
+    let mut vote_record = [0u8; 32];
+    vote_record[owner_byte_pos] = u8::from_str_radix(&owner_byte_str, 2).unwrap();
+    let voting_details = VoteCount {
+        discriminator: AccountType::VoteCount,
+        proposed_time: Clock::get()?.unix_timestamp,
+        votes: 1,
+        vote_record,
+        is_initialized: true,
+    };
+    voting_details.serialize(&mut &mut vote_count.data.borrow_mut()[..])?;
     Ok(())
 }
 
